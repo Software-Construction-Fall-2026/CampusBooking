@@ -1,18 +1,27 @@
 <script>
-	import DemoLinks from './demo/DemoLinks.svelte';
 	import favicon from '#lib/assets/favicon.svg';
 
 	// bootstrap is installed via npm package
 	import 'bootstrap/dist/css/bootstrap.min.css';
 	import 'bootstrap-icons/font/bootstrap-icons.min.css';
+	
+	import Navbar from '../Navbar.svelte';
 
-	let { children } = $props();
+	let { children, data } = $props();
 </script>
 
 <svelte:head>
 	<link rel="icon" href={favicon} />
 </svelte:head>
 
+<div class="d-lg-flex">
+	{#if data.user}
+		<Navbar user={data.user} />
+	{/if}
+	<div class="flex-grow-1">
+		{@render children()}
+	</div>
+</div>
 
 <style>
 	:root {
