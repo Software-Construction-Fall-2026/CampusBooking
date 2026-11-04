@@ -3,7 +3,7 @@
 import serviceAccount from './serviceAccountKey.json' with { type: 'json' };
 
 // Used to create a firestore instance with admin access
-import { initializeApp, cert } from 'firebase-admin/app';
+import { initializeApp, cert, getApps, getApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 
 /**
@@ -157,9 +157,11 @@ class DataManager {
  * across any import of the DataManager class
  */
 const initializeDataManager = () => {
-	const app = initializeApp({
-		credential: cert(serviceAccount)
-	});
+	const app = getApps().length
+		? getApp()
+		: initializeApp({
+				credential: cert(serviceAccount)
+			});
 	const firestoreDatabase = getFirestore(app);
 	return new DataManager(firestoreDatabase);
 };
