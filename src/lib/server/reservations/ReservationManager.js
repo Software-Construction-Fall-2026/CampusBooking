@@ -281,6 +281,68 @@ export class ReservationManager {
 
 		return reservation;
 	}
+		/**
+	 * Cancels a reservation for a student or faculty member.
+	 *
+	 * @param {User} user The user cancelling the reservation.
+	 * @param {string} reservationId The id of the reservation.
+	 * @throws {ReservationError} If cancellation is not allowed.
+	 */
+	async cancelReservation(user, reservationId) {
+		// Only students and faculty members can cancel reservations
+		if (!this.canReserve(user)) {
+			throw new ReservationError(
+				'Only students and faculty members can cancel reservations.'
+			);
+		}
+				// Find the reservation in the database
+		const reservation = await this.#dataManager.load({
+			collection: CONSTANTS.RESERVATIONS_COLLECTION,
+			id: reservationId
+		});
+
+		// Check if the reservation exists
+		if (!reservation) {
+			throw new ReservationError('Reservation not found.');
+		}
+				// Check if the reservation belongs to the user
+		if (reservation.userId !== user.getUserId()) {
+			throw new ReservationError(
+				'You are not authorized to cancel this reservation.'
+			);
+		}
+				// Check if the reservation has already been cancelled
+		if (reservation.status !== ReservationStatus.CONFIRMED) {
+			throw new ReservationError(
+				'This reservation has already been cancelled.'
+			);
+		}
+				// Check if the reservation has already started
+		const period = {
+			date: reservation.date,
+			startHour: reservation.startHour,
+			endHour: reservation.startHour + Reservation.DURATION_HOURS
+		};
+
+		if (isPast(period, getCampusDateTime(CONSTANTS.CAMPUS_TIME_ZONE))) {
+			throw new ReservationError(
+				'This reservation has already started and cannot be cancelled.'
+			);
+		}
+				// Update the reservation status to cancelled
+		await this.#dataManager.update({
+			collection: CONSTANTS.RESERVATIONS_COLLECTION,
+			id: reservationId,
+			updatedFields: {
+				status: ReservationStatus.CANCELLED
+			}
+		});
+
+		return {
+			...reservation,
+			status: ReservationStatus.CANCELLED
+		};
+	}
 }
 
 const reservationManager = new ReservationManager();
