@@ -26,3 +26,5 @@ test-results
 
 # Ignore service account key (important)
 serviceAccountKey.json
+
+firestore-debug.log
