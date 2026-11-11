@@ -4,7 +4,7 @@
 	import '#lib/styles/booking.css';
 
 	// isUpcoming tells if the reservation has not started yet
-	let { reservation, isUpcoming } = $props();
+	let { reservation, isUpcoming, showCancelBtn=true } = $props();
 
 	// Badge shown on the reservation depending on its status
 	const badge = $derived.by(() => {
@@ -72,9 +72,11 @@
 			}}
 		>
 			<input type="hidden" name="reservationId" value={reservation.id} />
+			{#if showCancelBtn}
 			<button type="submit" class="btn btn-sm btn-outline-danger">
 				Cancel
 			</button>
+			{/if}
 		</form>
 	{/if}
 </article>
