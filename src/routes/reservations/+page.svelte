@@ -5,7 +5,7 @@
 
 	import '#lib/styles/booking.css';
 
-	let { data } = $props();
+	let { data, form } = $props();
 
 	const hasReservations = $derived(
 		data.upcoming.length > 0 || data.past.length > 0
@@ -26,6 +26,12 @@
 		<p class="text-body-secondary mb-5">
 			See all of your campus resource bookings in one place.
 		</p>
+
+		{#if form?.error}
+			<div class="alert alert-danger">
+				{form.error}
+			</div>
+		{/if}
 
 		{#if !hasReservations}
 			<!-- No reservations yet -->

@@ -1,4 +1,5 @@
 <script>
+	import { enhance } from '$app/forms';
 	import { formatDate } from '#lib/utils/datetime.js';
 	import '#lib/styles/booking.css';
 
@@ -57,6 +58,25 @@
 	</div>
 
 	<span class="badge rounded-pill {badge.className}">{badge.label}</span>
+
+	{#if isUpcoming}
+		<form
+			method="POST"
+			action="?/cancel"
+			use:enhance={({ cancel }) => {
+				if (
+					!confirm(`Cancel your reservation for ${reservation.resourceName}?`)
+				) {
+					cancel();
+				}
+			}}
+		>
+			<input type="hidden" name="reservationId" value={reservation.id} />
+			<button type="submit" class="btn btn-sm btn-outline-danger">
+				Cancel
+			</button>
+		</form>
+	{/if}
 </article>
 
 <style>
