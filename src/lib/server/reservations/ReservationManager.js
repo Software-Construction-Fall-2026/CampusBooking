@@ -9,6 +9,7 @@
  * It has the contracts
  * C9: Check available dates and times
  * C10: Make reservation
+ * C13: View reservations
  *
  * It uses the contracts from other classes, like
  * C2: Check User Role (AuthenticationManager)
@@ -40,6 +41,7 @@ import {
 
 const CONSTANTS = {
 	RESERVATIONS_COLLECTION: 'reservations',
+	RESOURCES_COLLECTION: 'resources',
 	CAMPUS_TIME_ZONE: 'America/Denver',
 	BOOKING_WINDOW_DAYS: 30,
 	HOURS_IN_DAY: 24
@@ -342,6 +344,140 @@ export class ReservationManager {
 			...reservation,
 			status: ReservationStatus.CANCELLED
 		};
+	}
+
+	/**
+	 * C13: View Reservations - Return my reservations
+	 *
+	 * Pre-condition: the user is logged in.
+	 * Post-condition: the current user's reservations are returned.
+	 *
+	 * @param {User} user The logged in user.
+	 * @returns {Promise<object>} { upcoming, past } (see #toReservationViews)
+	 * @throws {ReservationError} If the user is not logged in.
+	 */
+	async getMyReservations(user) {
+		if (!user) {
+			throw new ReservationError(
+				'You must be logged in to view your reservations.'
+			);
+		}
+
+		const documents = await this.#dataManager.load({
+			collection: CONSTANTS.RESERVATIONS_COLLECTION,
+			filters: [{ field: 'userId', operator: '==', value: user.getUserId() }]
+		});
+
+		return this.#toReservationViews(documents);
+	}
+
+	/**
+	 * C13: View Reservations - Return all reservations
+	 *
+	 * Pre-condition: the user is an administrator.
+	 * Post-condition: all reservations are returned.
+	 *
+	 * @param {User} user The logged in user.
+	 * @returns {Promise<object>} { upcoming, past } (see #toReservationViews)
+	 * @throws {ReservationError} If the user is not an administrator.
+	 */
+	async getAllReservations(user) {
+		const isAdministrator = this.#authenticationManager.hasRole(
+			user,
+			Roles.ROLES.ADMINISTRATOR
+		);
+		if (!isAdministrator) {
+			throw new ReservationError(
+				'Only administrators can view all reservations.'
+			);
+		}
+
+		const documents = await this.#dataManager.load({
+			collection: CONSTANTS.RESERVATIONS_COLLECTION
+		});
+
+		return this.#toReservationViews(documents);
+	}
+
+	/**
+	 * Converts reservation documents into plain objects for the browser.
+	 *
+	 * The reservations are split into upcoming ones (confirmed and not
+	 * started yet) and past ones (already started or cancelled).
+	 * Upcoming reservations are sorted soonest first, and past
+	 * reservations are sorted most recent first.
+	 *
+	 * @param {object[]} documents The reservation documents from the database.
+	 * @returns {Promise<object>} { upcoming, past }, where each reservation
+	 * is in the format { id, userId, resourceId, resourceName, building,
+	 * room, date, startHour, timeLabel, status }.
+	 */
+	async #toReservationViews(documents) {
+		// Look up each resource only once, even if it was booked many times
+		const resourceIds = [
+			...new Set(documents.map((document) => document.resourceId))
+		];
+		const resources = new Map(
+			await Promise.all(
+				resourceIds.map(async (resourceId) => [
+					resourceId,
+					await this.#dataManager.load({
+						collection: CONSTANTS.RESOURCES_COLLECTION,
+						id: resourceId
+					})
+				])
+			)
+		);
+
+		const now = getCampusDateTime(CONSTANTS.CAMPUS_TIME_ZONE);
+		const upcoming = [];
+		const past = [];
+		for (const document of documents) {
+			const reservation = new Reservation({
+				reservationId: document.id,
+				userId: document.userId,
+				resourceId: document.resourceId,
+				date: document.date,
+				startHour: document.startHour,
+				status: document.status,
+				createdAt: document.createdAt
+			});
+
+			// The resource may have been deleted after it was booked
+			const resource = resources.get(reservation.getResourceId());
+
+			// Plain object so it can be sent to the browser
+			const reservationView = {
+				id: reservation.getReservationId(),
+				userId: reservation.getUserId(),
+				resourceId: reservation.getResourceId(),
+				resourceName: resource?.name ?? 'Unknown resource',
+				building: resource?.building ?? null,
+				room: resource?.room ?? null,
+				date: reservation.getDate(),
+				startHour: reservation.getStartHour(),
+				timeLabel: reservation.getTimeLabel(),
+				status: reservation.getStatus()
+			};
+
+			const period = {
+				date: reservation.getDate(),
+				startHour: reservation.getStartHour()
+			};
+			if (reservation.isConfirmed() && !isPast(period, now)) {
+				upcoming.push(reservationView);
+			} else {
+				past.push(reservationView);
+			}
+		}
+
+		// Sort by date first, then by hour
+		const byDateAndHour = (a, b) =>
+			a.date.localeCompare(b.date) || a.startHour - b.startHour;
+		upcoming.sort(byDateAndHour);
+		past.sort((a, b) => byDateAndHour(b, a));
+
+		return { upcoming, past };
 	}
 }
 
