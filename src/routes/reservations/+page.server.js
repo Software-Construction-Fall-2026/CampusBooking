@@ -1,6 +1,31 @@
-import { error, redirect } from '@sveltejs/kit';
+import { error, redirect, fail } from '@sveltejs/kit';
 
-import reservationManager from '#lib/server/reservations/ReservationManager.js';
+import reservationManager, {
+	ReservationError
+} from '#lib/server/reservations/ReservationManager.js';
+
+export const actions = {
+	// handles cancellation request from the frontend for a given user and reservation id
+	cancel: async ({ locals, request }) => {
+		if (!locals.user) {
+			redirect(303, '/auth/login');
+		}
+
+		const form = await request.formData();
+		const reservationId = form.get('reservationId');
+
+		try {
+			await reservationManager.cancelReservation(locals.user, reservationId);
+			return { cancelled: reservationId };
+		} catch (err) {
+			if (err instanceof ReservationError) {
+				return fail(400, { error: err.message, reservationId });
+			}
+			console.error('Failed to cancel reservation: ', err);
+			return fail(500, { error: 'Something went wrong, please try again.' });
+		}
+	}
+};
 
 // Shows all the reservations of the logged in student or faculty member
 export async function load({ locals }) {

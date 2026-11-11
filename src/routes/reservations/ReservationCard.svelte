@@ -1,9 +1,10 @@
 <script>
+	import { enhance } from '$app/forms';
 	import { formatDate } from '#lib/utils/datetime.js';
 	import '#lib/styles/booking.css';
 
 	// isUpcoming tells if the reservation has not started yet
-	let { reservation, isUpcoming } = $props();
+	let { reservation, isUpcoming, showCancelBtn=true } = $props();
 
 	// Badge shown on the reservation depending on its status
 	const badge = $derived.by(() => {
@@ -57,6 +58,27 @@
 	</div>
 
 	<span class="badge rounded-pill {badge.className}">{badge.label}</span>
+
+	{#if isUpcoming}
+		<form
+			method="POST"
+			action="?/cancel"
+			use:enhance={({ cancel }) => {
+				if (
+					!confirm(`Cancel your reservation for ${reservation.resourceName}?`)
+				) {
+					cancel();
+				}
+			}}
+		>
+			<input type="hidden" name="reservationId" value={reservation.id} />
+			{#if showCancelBtn}
+			<button type="submit" class="btn btn-sm btn-outline-danger">
+				Cancel
+			</button>
+			{/if}
+		</form>
+	{/if}
 </article>
 
 <style>
