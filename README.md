@@ -4,22 +4,39 @@
 
 The Campus Booking System enables the reservation and management of study rooms, classrooms, labs, and equipment for students, faculty members, and administrators at The University of Texas at El Paso.
 
-# Developer Setup
+# Running Campus Booking
 
-Clone the repository and install the required dependencies.
+## 1. Install Node 24
+
+The project needs Node **24.12.0 or newer**. Our `.nvmrc` file pins this version to 24.22.2.
+
+```
+nvm install
+nvm use
+```
+
+Check that you installed the correct version using `node -v`.
+
+## 2. Get the code and install dependencies
 
 ```bash
+git clone <repo-url>
+cd CampusBooking
 npm install
 ```
 
-### Node version error?
+If `npm install` fails due to a Firebase package issue, make sure you're using Node version 24.22.2. You can use node version manager for simplicity.
 
-If `npm install` fails due to a Firebase package issue, make sure you're using Node version >= 24.12.0. You can use node version manager for simplicity.
+## 3. Add the Firebase service account key
 
-### Required Developer Service Account Key
+The app reads and writes Firestore from the server using a service account key.
+The key is not in the repo, and is actually ignored by `.gitignore` since it contains private information.
 
-Server-side access to the Firestore database uses a Firestore service account, which can be placed as a JSON
-file at `src/lib/server/serviceAccountKey.json`. This JSON file can be obtained from Firebase and will have a form similar to the following, with empty string replaced by their real fields:
+You can ask a teammate for the `serviceAccountKey.json` file or download a new
+one from Firebase. Simply navigate to the Firebase console, go to the campus booking project, project settings, and finally service accounts. There, you
+can select **Generate new private key**. Make sure to rename it once you've downloaded it.
+
+This JSON file will have a form similar to the following, with empty strings replaced by their real fields:
 
 ```
 {
@@ -34,6 +51,20 @@ file at `src/lib/server/serviceAccountKey.json`. This JSON file can be obtained 
   "client_x509_cert_url": "",
   "universe_domain": "",
 }
+```
+
+Save it exactly here:
+
+```
+src/lib/server/serviceAccountKey.json
+```
+
+Keep this file private and never share it publicly to the repository.
+
+## 4. Start the app
+
+```bash
+npm run dev
 ```
 
 # Developing
@@ -53,11 +84,21 @@ npm run lint
 npm run format
 ```
 
----
+### Running Tests
 
-### Building for Production
+The project contains various tests for classes in the system. You can run them using the following commands, one at a time for each type of test:
 
-Build the application for production
+```
+# runs unit tests
+npm run test:unit
+
+# runs integration tests
+npm run test:integration
+```
+
+# Building for Production
+
+Build the application for production. You do not need to do this when developing, only when we're deploying the website.
 
 ```
 npm run build
