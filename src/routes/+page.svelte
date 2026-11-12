@@ -95,7 +95,7 @@
 									{category.label}
 								</span>
 								<span class="small text-body-secondary">
-									{data.resourceCounts[category.type] ?? 0} resources
+									{data.resourceCounts[category.type.toLowerCase()] ?? 0} resources
 								</span>
 							</span>
 							<i class="bi bi-chevron-right text-body-secondary"></i>

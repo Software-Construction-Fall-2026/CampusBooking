@@ -19,7 +19,8 @@ export async function load({ locals }) {
 	const resources = await resourceManager.getResources();
 	const resourceCounts = {};
 	for (const resource of resources) {
-		resourceCounts[resource.type] = (resourceCounts[resource.type] ?? 0) + 1;
+		const type = resource.type.toLowerCase();
+		resourceCounts[type] = (resourceCounts[type] ?? 0) + 1;
 	}
 
 	// Administrators do not have reservations
