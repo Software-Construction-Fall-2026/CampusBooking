@@ -1,10 +1,13 @@
 
 
 <script>
+  import { page } from "$app/state";
   let { data } = $props();
 
   let search = $state('');
-  let category = $state('All');
+  // Linking from dashboard reads the resource type to filter by from the url.
+  // In the regular case, we use "All"
+  let category = $state(page.url.searchParams.get("type") ?? "All");
   let building = $state('All');
 
   let resources = $derived(data.resources ?? []);
