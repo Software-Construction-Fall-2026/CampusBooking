@@ -4,8 +4,18 @@ import ResourceManager from './ResourceManager.js';
 describe('ResourceManager', () => {
     it('should return all campus resources', async () => {
         const resources = [
-            { id: '1', name: 'Study Room' },
-            { id: '2', name: 'Computer Lab' }
+            {
+                id: '1',
+                name: 'Study Room',
+                type: 'Study Room',
+                building: 'Library'
+            },
+            {
+                id: '2',
+                name: 'Computer Lab',
+                type: 'Computer Lab',
+                building: 'CCSB'
+            }
         ];
 
         const mockDataManager = {
