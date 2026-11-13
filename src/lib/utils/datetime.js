@@ -89,3 +89,17 @@ export const toDateString = (year, month, day) => {
 	const paddedDay = String(day).padStart(2, '0');
 	return `${year}-${paddedMonth}-${paddedDay}`;
 };
+
+// Formats a firestore created At date to a readable
+// form, like "Thu, Nov 6, 2026, 6:35 PM"
+export const formatCreatedAt = (date) => {
+	const formattedDate = date.toLocaleString('en-US', {
+		weekday: 'short',
+		month: 'short',
+		day: 'numeric',
+		year: 'numeric',
+		hour: 'numeric',
+		minute: '2-digit'
+	});
+	return formattedDate;
+};

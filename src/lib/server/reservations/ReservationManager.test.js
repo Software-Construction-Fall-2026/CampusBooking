@@ -12,9 +12,17 @@ describe('ReservationManager - Cancel Reservation', () => {
     const mockUser = {
     getUserId: vi.fn().mockReturnValue('student123')
     };
+		const mockResourceManager = {
+			getResource: vi.fn().mockResolvedValue({name: "Study Room"})
+		};
+		const mockNotificationManager = {
+			notify: vi.fn().mockResolvedValue("notification123")
+		}
     const manager = new ReservationManager({
-    data: mockDataManager,
-    authentication: mockAuthenticationManager
+			data: mockDataManager,
+			authentication: mockAuthenticationManager,
+			resources: mockResourceManager,
+			notifications: mockNotificationManager
     });
     it('should prevent a user from cancelling another users reservation', async () => {
     const reservation = {
@@ -111,6 +119,52 @@ it('should reject cancellation when reservation has already started', async () =
 
     expect(result.status).toBe('cancelled');
     });
+
+		it('should notify the user when a reservation is cancelled', async () => {
+			const reservation = {
+				id: 'reservation123',
+				userId: 'student123',
+				resourceId: 'room1',
+				status: 'confirmed',
+				date: '2099-12-15',
+				startHour: 10,
+				endHour: 11
+			};
+
+			mockDataManager.load.mockResolvedValue(reservation);
+			mockDataManager.update.mockResolvedValue(undefined);
+
+			await manager.cancelReservation(mockUser, 'reservation123');
+
+			expect(mockNotificationManager.notify).toHaveBeenCalledWith(
+				'student123',
+				expect.stringContaining('Study Room')
+			);
+
+			expect(mockNotificationManager.notify).toHaveBeenCalledWith(
+				'student123',
+				expect.stringContaining('cancelled')
+			);
+		});
+
+		it("should still cancel the reservation if the notification fails", async () => {
+			const reservation = {
+				id: 'reservation123',
+				userId: 'student123',
+				resourceId: 'room1',
+				status: 'confirmed',
+				date: '2099-12-15',
+				startHour: 10,
+				endHour: 11
+			};
+
+			mockDataManager.load.mockResolvedValue(reservation);
+			mockDataManager.update.mockResolvedValue(undefined);
+			mockNotificationManager.notify.mockRejectedValueOnce(new Error("Firestore is down"));
+
+			const result = await manager.cancelReservation(mockUser, "reservation123")
+			expect(result.status).toBe("cancelled");
+		});
 });
 
 describe('ReservationManager - View Reservations (C13)', () => {
