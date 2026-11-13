@@ -36,8 +36,10 @@ import {
 	isPast,
 	getCampusDateTime,
 	addDays,
-	isValidDateString
+	isValidDateString,
+	formatDate
 } from '#lib/utils/datetime.js';
+import NotificationManager from '#lib/server/notifications/NotificationManager.js';
 
 const CONSTANTS = {
 	RESERVATIONS_COLLECTION: 'reservations',
@@ -68,15 +70,18 @@ export class ReservationManager {
 	#dataManager;
 	#resourceManager;
 	#authenticationManager;
+	#notificationManager;
 
 	constructor({
 		data = dataManager,
 		resources = new ResourceManager(),
-		authentication = authenticationManager
+		authentication = authenticationManager,
+		notifications = new NotificationManager()
 	} = {}) {
 		this.#dataManager = data;
 		this.#resourceManager = resources;
 		this.#authenticationManager = authentication;
+		this.#notificationManager = notifications;
 	}
 
 	// Loads all the confirmed reservations for the resource on the given date
@@ -281,6 +286,16 @@ export class ReservationManager {
 			documentData: reservation.toDocument()
 		});
 
+		// Send confirmation notification
+		try {
+			await this.#notificationManager.notify(
+				user.getUserId(),
+				`Your reservation for ${resource.name} on ${formatDate(reservation.getDate())}, ${reservation.getTimeLabel()} has been confirmed.`
+			);
+		} catch {
+			// Unprocessed on purpose, notifications should not stop a reservation
+		}
+
 		return reservation;
 	}
 		/**
@@ -339,6 +354,19 @@ export class ReservationManager {
 				status: ReservationStatus.CANCELLED
 			}
 		});
+
+		// Send cancellation notification
+		try {
+			const resource = await this.#resourceManager.getResource(
+				reservation.resourceId
+			);
+			await this.#notificationManager.notify(
+				user.getUserId(),
+				`Your reservation for ${resource.name} on ${formatDate(reservation.date)}, ${formatHour(reservation.startHour)} - ${formatHour(reservation.endHour)} has been cancelled.`
+			);
+		} catch {
+			// Unprocessed on purpose, notifications should not stop a reservation
+		}
 
 		return {
 			...reservation,

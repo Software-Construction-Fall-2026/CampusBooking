@@ -4,7 +4,7 @@
 	import { resolve } from '$app/paths';
 
 	// User comes from root layout
-	let { user } = $props();
+	let { user, unreadNotifications } = $props();
 
 	// Used for mobile screens when sidebar collapses
 	let isOpen = $state(false);
@@ -12,7 +12,8 @@
 	const links = [
 		{ href: '/', label: 'Dashboard', icon: 'bi-grid' },
 		{ href: '/resources', label: 'Browse Resources', icon: 'bi-search' },
-		{ href: '/reservations', label: 'My Reservations', icon: 'bi-calendar3' }
+		{ href: '/reservations', label: 'My Reservations', icon: 'bi-calendar3' },
+		{ href: '/notifications', label: 'Notifications', icon: 'bi-bell' }
 	];
 
 	// Gets user's full name initials, like "AM"
@@ -108,6 +109,11 @@
 				<span class="flex-grow-1">{link.label}</span>
 				{#if active}
 					<i class="bi bi-chevron-right small"></i>
+				{/if}
+				{#if link.href === '/notifications' && unreadNotifications > 0}
+					<span class="badge rounded-pill bg-primary">
+						{unreadNotifications}
+					</span>
 				{/if}
 			</a>
 		{/each}

@@ -4,7 +4,7 @@
 	// bootstrap is installed via npm package
 	import 'bootstrap/dist/css/bootstrap.min.css';
 	import 'bootstrap-icons/font/bootstrap-icons.min.css';
-	
+
 	import Navbar from '../Navbar.svelte';
 
 	let { children, data } = $props();
@@ -16,7 +16,7 @@
 
 <div class="d-lg-flex">
 	{#if data.user}
-		<Navbar user={data.user} />
+		<Navbar user={data.user} unreadNotifications={data.unreadNotifications} />
 	{/if}
 	<div class="flex-grow-1">
 		{@render children()}
