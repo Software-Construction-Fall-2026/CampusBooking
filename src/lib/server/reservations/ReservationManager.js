@@ -9,6 +9,8 @@
  * It has the contracts
  * C9: Check available dates and times
  * C10: Make reservation
+ * C11: Cancel reservation
+ * C12: Cancel resource reservations
  * C13: View reservations
  *
  * It uses the contracts from other classes, like
@@ -96,6 +98,21 @@ export class ReservationManager {
 		});
 
 		return reservations;
+	}
+
+	// Checks if the user has the administrator role
+	#isAdministrator(user) {
+		return this.#authenticationManager.hasRole(user, Roles.ROLES.ADMINISTRATOR);
+	}
+
+	// Notifications should never stop a reservation from being made or cancelled
+	// since they're just for user experience
+	async #sendNotification(userId, message) {
+		try {
+			await this.#notificationManager.notify(userId, message);
+		} catch  {
+			// Ignored since the notification is only UX 
+		}
 	}
 
 	/**
@@ -212,23 +229,16 @@ export class ReservationManager {
 
 	/**
 	 *
-	 * Books a 1 hour slot of a resource for the user.
+	 * Checks the booking rules and saves a reservation for the owner.
 	 *
-	 * @param {User} user The user making the reservation.
+	 * @param {User} owner The student or faculty member the reservation is for.
 	 * @param {string} resourceId The id of the resource to book.
 	 * @param {string} date The date in "YYYY-MM-DD" format
 	 * @param {number} startHour The starting hour in 24-hour time
 	 * @returns {Promise<Reservation>} The saved reservation.
 	 * @throws {ReservationError} If the reservation is not allowed.
 	 */
-	async makeReservation(user, resourceId, date, startHour) {
-		// Check the user role
-		if (!this.canReserve(user)) {
-			throw new ReservationError(
-				'Only students and faculty members can make reservations.'
-			);
-		}
-
+	async #createReservation(owner, resourceId, date, startHour) {
 		// Cannot be past the 30 days of the booking window
 		if (!this.isWithinBookingWindow(date)) {
 			throw new ReservationError(
@@ -246,7 +256,7 @@ export class ReservationManager {
 			throw new ReservationError('This time has already passed.');
 		}
 
-    // Find the resource just in case the user found an invalid one
+		// Find the resource just in case the user found an invalid one
 		const resource = await this.#resourceManager.getResource(resourceId);
 		if (!resource) {
 			throw new ReservationError('This resource does not exist.');
@@ -273,7 +283,7 @@ export class ReservationManager {
 		// Save the reservation to the database by id
 		const reservation = new Reservation({
 			reservationId: randomUUID(),
-			userId: user.getUserId(),
+			userId: owner.getUserId(),
 			resourceId,
 			date,
 			startHour,
@@ -287,22 +297,167 @@ export class ReservationManager {
 		});
 
 		// Send confirmation notification
-		try {
-			await this.#notificationManager.notify(
-				user.getUserId(),
-				`Your reservation for ${resource.name} on ${formatDate(reservation.getDate())}, ${reservation.getTimeLabel()} has been confirmed.`
+		await this.#sendNotification(
+			owner.getUserId(),
+			`Your reservation for ${resource.name} on ${formatDate(reservation.getDate())}, ${reservation.getTimeLabel()} has been confirmed.`
+		);
+
+		return reservation;
+	}
+
+	/**
+	 *
+	 * Books a 1 hour slot of a resource for the user.
+	 *
+	 * @param {User} user The user making the reservation.
+	 * @param {string} resourceId The id of the resource to book.
+	 * @param {string} date The date in "YYYY-MM-DD" format
+	 * @param {number} startHour The starting hour in 24-hour time
+	 * @returns {Promise<Reservation>} The saved reservation.
+	 * @throws {ReservationError} If the reservation is not allowed.
+	 */
+	async makeReservation(user, resourceId, date, startHour) {
+		// Check the user role
+		if (!this.canReserve(user)) {
+			throw new ReservationError(
+				'Only students and faculty members can make reservations.'
 			);
-		} catch {
-			// Unprocessed on purpose, notifications should not stop a reservation
+		}
+
+		// The reservation helper is extracted since
+		// admins use it in their reservations for other users as well
+		return this.#createReservation(user, resourceId, date, startHour);
+	}
+
+	/**
+	 * Allows administrators to make a reservation
+	 * for a student or faculty member.
+	 *
+	 * @param {User} administrator The logged in administrator.
+	 * @param {string} userId The id of the student or faculty member.
+	 * @param {string} resourceId The id of the resource to book.
+	 * @param {string} date The date in "YYYY-MM-DD" format
+	 * @param {number} startHour The starting hour in 24-hour time
+	 * @returns {Promise<Reservation>} The saved reservation.
+	 * @throws {ReservationError} If the reservation is not allowed.
+	 */
+	async makeReservationForUser(
+		administrator,
+		userId,
+		resourceId,
+		date,
+		startHour
+	) {
+		if (!this.#isAdministrator(administrator)) {
+			throw new ReservationError(
+				'Only administrators can make reservations for other users.'
+			);
+		}
+
+		// The user has to exist in the database
+		const owner = await this.#authenticationManager.getUserById(userId);
+		if (!owner) {
+			throw new ReservationError('This user does not exist.');
+		}
+
+		// User must be student or faculty
+		if (!this.canReserve(owner)) {
+			throw new ReservationError(
+				'Reservations can only be made for students and faculty members.'
+			);
+		}
+
+		return this.#createReservation(owner, resourceId, date, startHour);
+	}
+
+	// Loads the reservation or throws if it doesn't exist
+	async #requireReservation(reservationId) {
+		const reservation = await this.#dataManager.load({
+			collection: CONSTANTS.RESERVATIONS_COLLECTION,
+			id: reservationId
+		});
+
+		if (!reservation) {
+			throw new ReservationError('Reservation not found.');
 		}
 
 		return reservation;
 	}
-		/**
+
+	// The resource may have been removed after it was booked,
+	// so the name changes to indicate the removal 
+	#getResourceName(resource, document) {
+		if (resource) {
+			return resource.name;
+		}
+
+		if (document.deletedResourceName) {
+			return `${document.deletedResourceName} (removed)`;
+		}
+
+		return 'Unknown resource';
+	}
+
+	/**
+	 * Cancels a confirmed reservation that has not started yet
+	 * and notifies the owner of the reservation.
+	 *
+	 * @param {object} reservation The reservation document.
+	 * @param {string} cancellationNotice The end of the notification message (e.g., "has been cancelled.")
+	 * @returns {Promise<object>} The cancelled reservation document.
+	 * @throws {ReservationError} If the reservation is already cancelled or has started.
+	 */
+	async #cancel(reservation, cancellationNotice) {
+		// Check if the reservation has already been cancelled
+		if (reservation.status !== ReservationStatus.CONFIRMED) {
+			throw new ReservationError(
+				'This reservation has already been cancelled.'
+			);
+		}
+
+		// Check if the reservation has already started
+		const period = {
+			date: reservation.date,
+			startHour: reservation.startHour,
+			endHour: reservation.startHour + Reservation.DURATION_HOURS
+		};
+		if (isPast(period, getCampusDateTime(CONSTANTS.CAMPUS_TIME_ZONE))) {
+			throw new ReservationError(
+				'This reservation has already started and cannot be cancelled.'
+			);
+		}
+
+		// Update the reservation status to cancelled
+		await this.#dataManager.update({
+			collection: CONSTANTS.RESERVATIONS_COLLECTION,
+			id: reservation.id,
+			updatedFields: {
+				status: ReservationStatus.CANCELLED
+			}
+		});
+
+		// Send cancellation notification to the owner
+		const resource = await this.#resourceManager.getResource(
+			reservation.resourceId
+		);
+		const resourceName = this.#getResourceName(resource, reservation);
+		await this.#sendNotification(
+			reservation.userId,
+			`Your reservation for ${resourceName} on ${formatDate(reservation.date)}, ${formatHour(period.startHour)} - ${formatHour(period.endHour)} ${cancellationNotice}`
+		);
+
+		return {
+			...reservation,
+			status: ReservationStatus.CANCELLED
+		};
+	}
+
+	/**
 	 * Cancels a reservation for a student or faculty member.
 	 *
 	 * @param {User} user The user cancelling the reservation.
 	 * @param {string} reservationId The id of the reservation.
+	 * @returns {Promise<object>} The cancelled reservation document.
 	 * @throws {ReservationError} If cancellation is not allowed.
 	 */
 	async cancelReservation(user, reservationId) {
@@ -312,66 +467,100 @@ export class ReservationManager {
 				'Only students and faculty members can cancel reservations.'
 			);
 		}
-				// Find the reservation in the database
-		const reservation = await this.#dataManager.load({
-			collection: CONSTANTS.RESERVATIONS_COLLECTION,
-			id: reservationId
-		});
 
-		// Check if the reservation exists
-		if (!reservation) {
-			throw new ReservationError('Reservation not found.');
-		}
-				// Check if the reservation belongs to the user
+		// Find the reservation in the database or throw if it doesn't exist
+		const reservation = await this.#requireReservation(reservationId);
+
+		// Check if the reservation belongs to the user
 		if (reservation.userId !== user.getUserId()) {
 			throw new ReservationError(
 				'You are not authorized to cancel this reservation.'
 			);
 		}
-				// Check if the reservation has already been cancelled
-		if (reservation.status !== ReservationStatus.CONFIRMED) {
-			throw new ReservationError(
-				'This reservation has already been cancelled.'
-			);
-		}
-				// Check if the reservation has already started
-		const period = {
-			date: reservation.date,
-			startHour: reservation.startHour,
-			endHour: reservation.startHour + Reservation.DURATION_HOURS
-		};
 
-		if (isPast(period, getCampusDateTime(CONSTANTS.CAMPUS_TIME_ZONE))) {
+		return this.#cancel(reservation, 'has been cancelled.');
+	}
+
+	/**
+	 * Allows administrators to cancel reservations for other users.
+	 *
+	 * @param {User} administrator The logged in administrator.
+	 * @param {string} reservationId The id of the reservation.
+	 * @returns {Promise<object>} The cancelled reservation document.
+	 * @throws {ReservationError} If cancellation is not allowed.
+	 */
+	async cancelReservationForUser(administrator, reservationId) {
+		// We check to make 100% sure the user is an admin, since
+		// cancelling a reservation is very important
+		if (!this.#isAdministrator(administrator)) {
 			throw new ReservationError(
-				'This reservation has already started and cannot be cancelled.'
+				'Only administrators can cancel reservations for other users.'
 			);
 		}
-				// Update the reservation status to cancelled
-		await this.#dataManager.update({
+
+		// Makes sure the reservation exists
+		const reservation = await this.#requireReservation(reservationId);
+
+		// Cancel and send notification to owner
+		return this.#cancel(reservation, 'has been cancelled by an administrator.');
+	}
+
+	/**
+	 * Allows the administrator to cancel all reservations
+	 * for the given resource document. This is used
+	 * when the administrator deletes a resource.
+	 *
+	 * The reservations keep the resource name so
+	 * the past reservations and notifications can still show its name.
+	 *
+	 * @param {object} resource The resource document being removed.
+	 */
+	async cancelReservationsFor(resource) {
+		const reservations = await this.#dataManager.load({
 			collection: CONSTANTS.RESERVATIONS_COLLECTION,
-			id: reservationId,
-			updatedFields: {
-				status: ReservationStatus.CANCELLED
-			}
+			filters: [
+				{
+					field: 'resourceId',
+					operator: '==',
+					value: resource.id
+				}
+			]
 		});
 
-		// Send cancellation notification
-		try {
-			const resource = await this.#resourceManager.getResource(
-				reservation.resourceId
-			);
-			await this.#notificationManager.notify(
-				user.getUserId(),
-				`Your reservation for ${resource.name} on ${formatDate(reservation.date)}, ${formatHour(reservation.startHour)} - ${formatHour(reservation.endHour)} has been cancelled.`
-			);
-		} catch {
-			// Unprocessed on purpose, notifications should not stop a reservation
-		}
+		const now = getCampusDateTime(CONSTANTS.CAMPUS_TIME_ZONE);
+		// Cancel each upcoming reservation 
+		for (const reservation of reservations) {
+			const period = {
+				date: reservation.date,
+				startHour: reservation.startHour,
+				endHour: reservation.startHour + Reservation.DURATION_HOURS
+			};
 
-		return {
-			...reservation,
-			status: ReservationStatus.CANCELLED
-		};
+			// The deleted resource name is included
+			// regardless of the reservation date 
+			const updatedFields = { deletedResourceName: resource.name };
+
+			const isUpcoming =
+				reservation.status === ReservationStatus.CONFIRMED &&
+				!isPast(period, now);
+			if (isUpcoming) {
+				updatedFields.status = ReservationStatus.CANCELLED;
+			}
+
+			// Save edits in the database
+			await this.#dataManager.update({
+				collection: CONSTANTS.RESERVATIONS_COLLECTION,
+				id: reservation.id,
+				updatedFields
+			});
+
+			if (isUpcoming) {
+				await this.#sendNotification(
+					reservation.userId,
+					`Your reservation for ${resource.name} on ${formatDate(period.date)}, ${formatHour(period.startHour)} - ${formatHour(period.endHour)} has been cancelled because the resource was removed.`
+				);
+			}
+		}
 	}
 
 	/**
@@ -410,11 +599,7 @@ export class ReservationManager {
 	 * @throws {ReservationError} If the user is not an administrator.
 	 */
 	async getAllReservations(user) {
-		const isAdministrator = this.#authenticationManager.hasRole(
-			user,
-			Roles.ROLES.ADMINISTRATOR
-		);
-		if (!isAdministrator) {
+		if (!this.#isAdministrator(user)) {
 			throw new ReservationError(
 				'Only administrators can view all reservations.'
 			);
@@ -479,7 +664,7 @@ export class ReservationManager {
 				id: reservation.getReservationId(),
 				userId: reservation.getUserId(),
 				resourceId: reservation.getResourceId(),
-				resourceName: resource?.name ?? 'Unknown resource',
+				resourceName: this.#getResourceName(resource, document),
 				building: resource?.building ?? null,
 				room: resource?.room ?? null,
 				date: reservation.getDate(),

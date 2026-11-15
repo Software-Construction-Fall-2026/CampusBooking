@@ -307,6 +307,30 @@ class AuthenticationManager {
 
 		return { user, session };
 	}
+
+	/**
+	 * Loads a user by id.
+	 * @param {string} userId The id of the user.
+	 * @returns {Promise<User | null>} The `User` object or null if the user does not exist.
+	 */
+	async getUserById(userId) {
+		const userDocument = await dataManager.load({
+			collection: CONSTANTS.USERS_COLLECTION,
+			id: userId
+		});
+
+		if (!userDocument) {
+			return null;
+		}
+
+		return new User({
+			userId: userDocument.id,
+			email: userDocument.email,
+			name: userDocument.name,
+			role: userDocument.role,
+			passwordHash: userDocument.passwordHash
+		});
+	}
 }
 
 // The manager is shared/cached across imports

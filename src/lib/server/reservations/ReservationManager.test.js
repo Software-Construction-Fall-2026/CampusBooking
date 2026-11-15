@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { ReservationManager, ReservationError } from './ReservationManager.js';
+import { addDays, getCampusDateTime } from '#lib/utils/datetime.js';
 
 describe('ReservationManager - Cancel Reservation', () => {
     const mockDataManager = {
@@ -433,5 +434,130 @@ describe('ReservationManager - View Reservations (C13)', () => {
 				'faculty456'
 			]);
 		});
+	});
+});
+
+describe('ReservationManager for administrators', () => {
+	const admin = { role: 'admin' };
+	const student = { role: 'student', getUserId: () => 'student1' };
+	const studyRoom = { id: 'room1', name: 'Study Room' };
+
+	const upcomingReservation = {
+		id: 'res1',
+		userId: 'student1',
+		resourceId: 'room1',
+		status: 'confirmed',
+		date: '2099-12-15',
+		startHour: 10
+	};
+
+	const createManager = ({ reservation = null, reservations = [] } = {}) => {
+		const mockDataManager = {
+			load: vi.fn(async (criteria) => {
+				if (criteria.id) {
+					return reservation;
+				}
+				return reservations;
+			}),
+			save: vi.fn(),
+			update: vi.fn()
+		};
+
+		const mockResourceManager = {
+			getResource: vi.fn().mockResolvedValue(studyRoom),
+			isAvailable: vi.fn().mockReturnValue(true)
+		};
+
+		const mockAuthenticationManager = {
+			hasRole: vi.fn((user, role) => user.role === role),
+			getUserById: vi.fn().mockResolvedValue(student)
+		};
+
+		const mockNotificationManager = { notify: vi.fn() };
+
+		const manager = new ReservationManager({
+			data: mockDataManager,
+			resources: mockResourceManager,
+			authentication: mockAuthenticationManager,
+			notifications: mockNotificationManager
+		});
+
+		return { manager, mockDataManager, mockNotificationManager };
+	};
+
+	it('should make a reservation for a user and notify them', async () => {
+		const { manager, mockDataManager, mockNotificationManager } =
+			createManager();
+
+		const tomorrow = addDays(getCampusDateTime('America/Denver').date, 1);
+		const reservation = await manager.makeReservationForUser(
+			admin,
+			'student1',
+			'room1',
+			tomorrow,
+			10
+		);
+
+		expect(reservation.getUserId()).toBe('student1');
+		expect(mockDataManager.save).toHaveBeenCalledWith(
+			expect.objectContaining({
+				collection: 'reservations',
+				documentData: expect.objectContaining({
+					userId: 'student1',
+					resourceId: 'room1',
+					date: tomorrow,
+					startHour: 10
+				})
+			})
+		);
+
+		expect(mockNotificationManager.notify).toHaveBeenCalledWith(
+			'student1',
+			expect.stringContaining('has been confirmed')
+		);
+	});
+
+	it("should cancel a user's reservation and notify the owner", async () => {
+		const { manager, mockDataManager, mockNotificationManager } = createManager(
+			{ reservation: upcomingReservation }
+		);
+		const result = await manager.cancelReservationForUser(admin, 'res1');
+
+		expect(result.status).toBe('cancelled');
+		expect(mockDataManager.update).toHaveBeenCalledWith({
+			collection: 'reservations',
+			id: 'res1',
+			updatedFields: { status: 'cancelled' }
+		});
+		expect(mockNotificationManager.notify).toHaveBeenCalledWith(
+			'student1',
+			expect.stringContaining('cancelled by an administrator')
+		);
+	});
+
+	it('should cancel only the upcoming reservations of a removed resource', async () => {
+		const { manager, mockDataManager, mockNotificationManager } = createManager(
+			{
+				reservations: [
+					{ ...upcomingReservation, id: 'upcoming' },
+					{ ...upcomingReservation, id: 'past', date: '2020-01-01' }
+				]
+			}
+		);
+
+		await manager.cancelReservationsFor(studyRoom);
+		expect(mockDataManager.update).toHaveBeenCalledWith({
+			collection: 'reservations',
+			id: 'upcoming',
+			updatedFields: { deletedResourceName: 'Study Room', status: 'cancelled' }
+		});
+
+		expect(mockDataManager.update).toHaveBeenCalledWith({
+			collection: 'reservations',
+			id: 'past',
+			updatedFields: { deletedResourceName: 'Study Room' }
+		});
+
+		expect(mockNotificationManager.notify).toHaveBeenCalledTimes(1);
 	});
 });
