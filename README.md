@@ -86,14 +86,27 @@ npm run format
 
 ### Running Tests
 
-The project contains various tests for classes in the system. You can run them using the following commands, one at a time for each type of test:
+The project contains various tests for classes in the system. You can run them using the following commands, one at a time for each type of test.
 
+### One-time setup
+Java 21 or newer is required for the Firebase emulator, which is used in the integration and system tests.
+
+Playwright browsers are used for system tests and can be installed using:
+```
+npx playwright install chromium
+```
+
+
+### Running Tests after the initial setup
 ```
 # runs unit tests
 npm run test:unit
 
 # runs integration tests
 npm run test:integration
+
+# runs system tests
+npm run test:system
 ```
 
 # Building for Production
