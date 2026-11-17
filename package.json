@@ -11,9 +11,10 @@
 		"lint": "prettier --check . && eslint .",
 		"format": "prettier --write .",
 		"test:unit": "vitest --project server",
-		"test": "npm run test:unit -- --run && npm run test:e2e",
+		"test": "npm run test:unit -- --run && npm run test:system",
 		"test:e2e": "playwright install && playwright test",
-		"test:integration": "firebase emulators:exec --only firestore --project campusbooking-8fa37 \"vitest run --project integration\""
+		"test:integration": "firebase emulators:exec --only firestore --project campusbooking-8fa37 \"vitest run --project integration\"",
+		"test:system": "firebase emulators:exec --only firestore --project campusbooking-8fa37 \"playwright test\""
 	},
 	"devDependencies": {
 		"@eslint/js": "^10.0.1",
